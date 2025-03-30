@@ -69,7 +69,7 @@ This will expose your Flask server (running on port 5050) to a public URL.
 
 ### Start the Flask server:
 ```bash
-python app.py
+python web_app.py
 ```
 
 ### Open the App
@@ -80,7 +80,7 @@ Go to `http://localhost:5050/` or your public ngrok URL.
 ## 📂 Folder Structure
 ```
 project/
-├── app.py
+├── web_app.py
 ├── frontend.html
 ├── history/                # Contains saved .wav and .txt files
 ├── static/                 # Not used anymore unless needed for fallback
