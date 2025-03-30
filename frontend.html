@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>OpenTranslator</title>
+</head>
+<body>
+  <h1>OpenTranslator</h1>
+
+  <h2>Select Your User, Channel, and Language:</h2>
+  <label>User:
+    <select id="userSelect" onchange="setUser()">
+      <option value="user1">User 1</option>
+      <option value="user2">User 2</option>
+    </select>
+  </label>
+
+  <label>Channel:
+    <select id="channelSelect" onchange="setChannel()">
+      <script>
+        for (let i = 0; i < 10; i++) {
+          document.write(`<option value="${i}">Channel ${i}</option>`);
+        }
+      </script>
+    </select>
+  </label>
+
+  <label>Language:
+    <select id="langSelect" onchange="setLanguage()">
+      <option value="ru">Russian</option>
+      <option value="es">Spanish</option>
+      <option value="fr">French</option>
+      <option value="zh-CN">Chinese</option>
+      <option value="en">English</option>
+    </select>
+  </label>
+
+  <p>Logged in as: <strong id="currentUser">user1</strong> | Channel: <strong id="currentChannel">0</strong></p>
+
+  <div>
+    <input id="messageInput" type="text" placeholder="Enter message">
+    <button onclick="sendMessage()">Send</button>
+  </div>
+
+  <div>
+    <button onclick="startRecording()">Start Recording</button>
+    <button onclick="stopRecording()">Stop Recording</button>
+    <p><a id="downloadLink" href="#" style="display:none">Download</a></p>
+  </div>
+
+  <div>
+    <p><strong>Dequeued:</strong> <span id="dequeuedMessage"></span></p>
+  </div>
+
+  <audio id="myAudio" src="/static/sound.wav"></audio>
+
+  <div style="margin-top: 30px;">
+    <p><strong>Messages Sent:</strong> <span id="sentCount">0</span></p>
+    <p><strong>Messages Received:</strong> <span id="recvCount">0</span></p>
+    <p><strong>Queue Size:</strong> <span id="queueSize">0</span></p>
+  </div>
+
+  <script>
+    let currentUser = "user1";
+    let currentChannel = "0";
+    let mediaRecorder, audioChunks = [], isCheckingQueue = false;
+
+    function setUser() {
+      currentUser = document.getElementById("userSelect").value;
+      document.getElementById("currentUser").textContent = currentUser;
+      updateStatus();
+    }
+
+    function setChannel() {
+      currentChannel = document.getElementById("channelSelect").value;
+      document.getElementById("currentChannel").textContent = currentChannel;
+      updateStatus();
+    }
+
+    async function setLanguage() {
+      const lang = document.getElementById("langSelect").value;
+      await fetch('/set_language', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ user: currentUser, lang: lang, channel: currentChannel })
+      });
+    }
+
+    async function sendMessage() {
+      const msg = document.getElementById("messageInput").value;
+      const res = await fetch('/enqueue', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ message: msg, user: currentUser, channel: currentChannel })
+      });
+      document.getElementById("messageInput").value = '';
+      updateStatus();
+    }
+
+    async function startRecording() {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('audio', blob, 'recording.webm');
+        formData.append('user', currentUser);
+        formData.append('channel', currentChannel);
+
+        await fetch('/upload_audio', {
+          method: 'POST',
+          body: formData
+        });
+        updateStatus();
+      };
+
+      mediaRecorder.start();
+    }
+
+    function stopRecording() {
+      if (mediaRecorder) mediaRecorder.stop();
+    }
+
+    async function updateStatus() {
+      const res = await fetch(`/status/${currentUser}/${currentChannel}`);
+      const data = await res.json();
+      document.getElementById("sentCount").textContent = data.sent;
+      document.getElementById("recvCount").textContent = data.recv;
+      document.getElementById("queueSize").textContent = data.queue_size;
+    }
+
+    async function checkAndPlay() {
+      if (isCheckingQueue) return;
+      isCheckingQueue = true;
+      const lang = document.getElementById("langSelect").value;
+
+      while (true) {
+        try {
+          const res = await fetch(`/dequeue/${currentUser}/${currentChannel}`);
+          const data = await res.json();
+
+          updateStatus();
+
+          if (data.message) {
+            document.getElementById("dequeuedMessage").textContent = data.message;
+            const res = await fetch('/set_audio', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ message: data.message, user: currentUser, channel: currentChannel, lang:lang })
+            });
+            const audio = document.getElementById("myAudio");
+            audio.src = `/history/${currentChannel}_${currentUser}_translated.wav?v=` + new Date().getTime();
+            await new Promise(resolve => {
+              audio.oncanplaythrough = () => {
+                audio.play().then(resolve).catch(resolve);
+              };
+            });
+
+            await new Promise(resolve => audio.onended = resolve);
+          } else {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        } catch (err) {
+          console.error("Polling error:", err);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+    }
+
+    window.onload = () => {
+      setUser();
+      setChannel();
+      checkAndPlay();
+    };
+  </script>
+</body>
+</html>
