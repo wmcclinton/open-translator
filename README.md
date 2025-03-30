@@ -113,6 +113,6 @@ Feel free to submit a pull request or log issues!
 
 ---
 
-## 🧠 Made with 💡 by [Your Name]
-For demo or collaboration, contact you@example.com
+## 🧠 Made with 💡 by Willie McClinton
+For demo or collaboration, contact wbm3@mit.edu
 
